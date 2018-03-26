@@ -212,7 +212,7 @@ namespace SumoServer
 
                     if (!gameStarted)
                     {
-                        await Delay(3000);
+                        await Delay(1000);
                         var map = Exports["mapmanager"].getCurrentMap();
                         TriggerClientEvent("Sumo:StartGame", map);
                         round++;
