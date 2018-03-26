@@ -84,6 +84,7 @@ namespace Sumo
                 EventHandlers.Add("Sumo:SetNextVehicle", new Action<string>(SetVehicle));
                 EventHandlers.Add("Sumo:Whistle", new Action<string>(Whistle));
                 EventHandlers.Add("Sumo:InProgress", new Action(AlreadyInProgress));
+                Print("First map load: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
                 RunSetup(firstJoin: true);
                 await Delay(1000);
 
@@ -96,8 +97,9 @@ namespace Sumo
             }
             else
             {
-                RunSetup(firstJoin: true);
-                Print("Setup is already completed, no need to run it again!");
+                //Print("Initial resource setup is already completed, no need to run it again!");
+                Print("Initial resource setup is already completed, no need to run it again: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
+                RunSetup(firstJoin: false);
                 return;
             }
         }
@@ -124,6 +126,7 @@ namespace Sumo
                     ClearArea(p.X, p.Y, p.Z, 5f, true, false, false, false);
                 }
             }
+            Print("RESPAWNING BECAUSE THE GAME IS ALREADY IN PROGRESS.");
             await RespawnPlayer(false);
             _CurrentGamePhase = GamePhase.DEAD;
 
@@ -137,6 +140,7 @@ namespace Sumo
         /// <param name="firstJoin"></param>
         private async void RunSetup(int newTime = 12, bool firstJoin = false)
         {
+            DoScreenFadeOut(500);
             Vector3 p = Game.PlayerPed.Position;
             ClearArea(p.X, p.Y, p.Z, 500f, true, false, false, false);
 
@@ -154,7 +158,8 @@ namespace Sumo
             }
 
             worldHourOfDay = newTime;
-
+            await Delay(500);
+            Print("RESPAWN FROM RUNSETUP FUNCTION.");
             await RespawnPlayer(!firstJoin); // only spawn in  in vehicle player if this is not the first spawn after a new map is loaded/player just joined.
 
             await Delay(500);
@@ -166,6 +171,7 @@ namespace Sumo
             timeleft = ((timem == 0 && times <= 10) ? "~r~" : "") + "0" + timem.ToString() + ":" + ((times < 10) ? ("0" + times.ToString()) : times.ToString());
 
             TriggerServerEvent("Sumo:MarkReady"); // Tell the server that we're ready.
+            DoScreenFadeIn(500);
         }
 
         /// <summary>
@@ -219,8 +225,8 @@ namespace Sumo
             }
 
             // Fade out.
-            DoScreenFadeOut(500);
-            await Delay(500);
+            //DoScreenFadeOut(500);
+            //await Delay(500);
 
             if (_CurrentGamePhase == GamePhase.STARTED || _CurrentGamePhase == GamePhase.STARTING)
             {
@@ -274,12 +280,13 @@ namespace Sumo
             }
 
             await Delay(1000);
-
+            //currentVehicle.PlaceOnGround();
             // Respawn if the game was starting, but you're not in a vehicle somehow.
             if (currentVehicle == null || !IsPedInAnyVehicle(PlayerPedId(), false))
             {
                 if (GetVehicle() == null || !IsPedInAnyVehicle(PlayerPedId(), false))
                 {
+                    Print("RESPAWN CAUSED BECAUSE THE PLAYER WAS NOT IN A VEHICLE AT ALL.");
                     await RespawnPlayer(true);
                 }
                 else
@@ -288,14 +295,18 @@ namespace Sumo
                 }
             }
             // Do the same if you're in the air, you're below the death z coord or your car is dead/exploded.
-            else if (Game.PlayerPed.Position.Z - 5f < zDeathCoord || currentVehicle.IsInAir || currentVehicle.IsDead)
+            else if (Game.PlayerPed.Position.Z - 5f < zDeathCoord || currentVehicle.IsInAir || Game.PlayerPed.IsDead)
             {
+                Print("RESPAWN CAUSED BY THE PLAYER BEING BELOW THE MAP, THE VEHICLE BEING IN THE AIR, OR THE PED BEING DEAD.");
+                Print($"CAUSE BY POSITION: {(Game.PlayerPed.Position.Z - 5f < zDeathCoord ? "yes" : "no")}.");
+                Print($"CAUSE BY IN-AIR: {(currentVehicle.IsInAir ? "yes" : "no")}.");
+                Print($"CAUSE BY VEHICLE IS DEAD: {(Game.PlayerPed.IsDead ? "yes" : "no")}.");
                 await RespawnPlayer(true);
             }
 
-            // Fade the screen back in.
-            DoScreenFadeIn(500);
-            await Delay(500);
+            //// Fade the screen back in.
+            //DoScreenFadeIn(500);
+            //await Delay(500);
 
             // Clear the leftover vehicles, vehicle parts, world damage etc from last round.
             var p = Game.PlayerPed.Position;
@@ -384,7 +395,7 @@ namespace Sumo
             await Delay(3500);
 
             // Restart the game if the map is going to be switched. This prevents duplicate re-spawns.
-            if (Round - 1 % 5 == 0 && Round != 0)
+            if ((Round - 1) % 5 == 0)
             {
                 _CurrentGamePhase = GamePhase.RESTARTING;
                 TriggerServerEvent("Sumo:MarkReady");
@@ -392,6 +403,7 @@ namespace Sumo
             else
             {
                 // Otherwise just run the setup for the next round.
+                Print("End of previous round: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
                 RunSetup(newTime);
             }
 
@@ -413,13 +425,13 @@ namespace Sumo
         {
             DoScreenFadeOut(300);
             await Delay(300);
-            Print("RespawnPlayer called, in vehicle: " + inVehicle.ToString());
+            Print("\r\nRespawnPlayer called, in vehicle: " + inVehicle.ToString() + "\r\n");
 
             var p = Game.PlayerPed.Position;
             ClearArea(p.X, p.Y, p.Z, 500f, true, false, false, false);
 
             Exports["spawnmanager"].spawnPlayer(PlayerId() + 1);
-            Exports["spawnmanager"].forceRespawn();
+            //Exports["spawnmanager"].forceRespawn();
 
             if (inVehicle)
             {
@@ -465,6 +477,17 @@ namespace Sumo
                 currentVehicle.IsPersistent = false;
                 currentVehicle.PreviouslyOwnedByPlayer = false;
             }
+            //if (!inVehicle)
+            //{
+            //    currentVehicle.IsVisible = false;
+            //    currentVehicle.IsPositionFrozen = true;
+            //    currentVehicle.Position = currentVehicle.Position + new Vector3(0f, 0f, 50f);
+            //    //currentVehicle.IsVisible = false;
+            //    //foreach (Player pr in new PlayerList())
+            //    //{
+            //    //    currentVehicle.SetNoCollision(new Ped(GetPlayerPed(pr.Handle)), true);
+            //    //}
+            //}
         }
         #endregion
 
@@ -620,7 +643,8 @@ namespace Sumo
                             await Delay(3000);
                             if (_CurrentGamePhase == GamePhase.DEAD)
                             {
-                                Print("Player is still marked as dead, so the game has not restarted/finished in the mean time. Respawning player invisible.");
+                                //Print("Player is still marked as dead, so the game has not restarted/finished in the mean time. Respawning player invisible.");
+                                Print("RESPAWNING BECAUSE PLAYER DIED, AND ROUND HASN'T FINISHED YET. Time to spectate someone else.");
                                 await RespawnPlayer(false);
                             }
                             DoScreenFadeIn(250);
@@ -679,6 +703,21 @@ namespace Sumo
             #region DEAD GAME PHASE
             if (_CurrentGamePhase == GamePhase.DEAD)
             {
+                if (IsPedInAnyVehicle(PlayerPedId(), false))
+                {
+                    SetEntityVisible(GetVehicle().Handle, false, false);
+                    FreezeEntityPosition(GetVehicle().Handle, true);
+                    foreach (Player p in new PlayerList())
+                    {
+                        var ped = GetPlayerPed(p.Handle);
+                        var veh = GetVehiclePedIsIn(ped, false);
+                        if (DoesEntityExist(veh) && IsEntityAVehicle(veh) && !IsEntityDead(veh))
+                        {
+                            SetEntityNoCollisionEntity(veh, GetVehicle().Handle, false);
+                        }
+                    }
+                }
+
                 ShowStats();
                 var pl = new PlayerList();
                 foreach (Player p in pl)
