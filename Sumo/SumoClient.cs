@@ -350,6 +350,9 @@ namespace Sumo
             _CurrentGamePhase = GamePhase.STARTED; // game has started.
 
             CountDownTimer = 3; // reset the countdown for next round.
+
+            timem = 3; // reset game/round time
+            times = 0;
         }
 
         /// <summary>
@@ -941,12 +944,15 @@ namespace Sumo
         private async void ManageCamera()
         {
             //DoScreenFadeOut(100);
+            await Delay(50);
             Vector3 gameCamPos = GameplayCamera.Position;
             var gameCam = GameplayCamera.FieldOfView;
 
             var fov = GameplayCamera.FieldOfView;
             Vector3 pointAt = GameplayCamera.Rotation;
-            SetCamCoord(camera, gameCamPos.X, gameCamPos.Y, gameCamPos.Z);
+
+            var playerPos = Game.PlayerPed.Position;
+            SetCamCoord(camera, playerPos.X, playerPos.Y, playerPos.Z);
 
             Vector3 pos = GetEntityCoords(PlayerPedId(), true);
             PointCamAtCoord(camera, pos.X, pos.Y, pos.Z + 0.5f);
