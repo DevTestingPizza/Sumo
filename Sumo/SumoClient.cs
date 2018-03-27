@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Newtonsoft.Json;
 using System.Threading.Tasks;
 using CitizenFX.Core;
 using static CitizenFX.Core.Native.API;
@@ -10,6 +11,15 @@ namespace Sumo
 {
     public class SumoClient : BaseScript
     {
+
+        public struct SumoProp
+        {
+            public uint Hash;
+            public Vector3 position;
+            public float heading;
+            public Vector3 vRotation;
+        }
+
         #region variables
         private bool FirstSetupDone = false;
 
@@ -20,6 +30,7 @@ namespace Sumo
         private Vehicle currentVehicle = null;
         private string nextVehicle = "zentorno";
         private string lastMap = "";
+        private List<SumoProp> props = new List<SumoProp>();
         private int matchTimer = 0; // used to end the game if the time is up.
 
         private int CountDownTimer = 3;
@@ -141,8 +152,9 @@ namespace Sumo
         private async void RunSetup(int newTime = 12, bool firstJoin = false)
         {
             DoScreenFadeOut(500);
-            Vector3 p = Game.PlayerPed.Position;
-            ClearArea(p.X, p.Y, p.Z, 500f, true, false, false, false);
+            Vector3 playerPos = Game.PlayerPed.Position;
+            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300, true, false, false, false);
+            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300f, true, false, false, false);
 
             Print("RunSetup function called.");
             timem = 3;
@@ -180,6 +192,69 @@ namespace Sumo
         /// <param name="map">Map name for the next round.</param>
         private async void StartGame(string map)
         {
+            mapCenterCoords = new Vector3(x, y, z);
+            props = new List<SumoProp>();
+            var file = LoadResourceFile(map, "props.json");
+            if (file != null)
+            {
+                Newtonsoft.Json.Linq.JArray jsonProps = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JArray>(file);
+                if (NetworkIsHost())
+                {
+                    Print("true");
+                }
+                else
+                {
+                    Print("false");
+                }
+                foreach (var prop in jsonProps)
+                {
+                    Print("Hash: " + prop["hash"].ToString());
+                    Print("x: " + prop["x"].ToString());
+                    Print("y: " + prop["y"].ToString());
+                    Print("z: " + prop["z"].ToString());
+                    var tmpProp = new SumoProp()
+                    {
+                        Hash = (uint)int.Parse(prop["hash"].ToString()),
+                        heading = float.Parse(prop["heading"].ToString()),
+                        position = new Vector3(float.Parse(prop["x"].ToString()), float.Parse(prop["y"].ToString()), float.Parse(prop["z"].ToString())),
+                        vRotation = new Vector3(float.Parse(prop["vRot"]["x"].ToString()), float.Parse(prop["vRot"]["y"].ToString()), float.Parse(prop["vRot"]["z"].ToString())),
+                    };
+                    props.Add(tmpProp);
+                }
+            }
+
+
+            ClearArea(mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 300f, true, false, false, false);
+            foreach (SumoProp prop in props)
+            {
+                ClearArea(prop.position.X, prop.position.Y, prop.position.Z, 100f, true, false, false, false);
+                var closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
+                DeleteObject(ref closestObject);
+
+                closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
+                DeleteObject(ref closestObject);
+            }
+            await Delay(100);
+            if (NetworkIsHost())
+            {
+                if (map == "sumo-rooftop-1")
+                {
+                    foreach (SumoProp prop in props)
+                    {
+                        RequestModel(prop.Hash);
+                        while (!HasModelLoaded(prop.Hash))
+                        {
+                            await Delay(0);
+                        }
+                        Print($"Prop created at {prop.position.ToString()}");
+                        var spawnedProp = CreateObjectNoOffset(prop.Hash, prop.position.X, prop.position.Y, prop.position.Z, true, false, false);
+                        SetEntityHeading(spawnedProp, prop.heading);
+                        SetEntityAsMissionEntity(spawnedProp, false, false);
+                        //SetModelAsNoLongerNeeded(prop.Hash);
+                        //SetEntityAsNoLongerNeeded(ref spawnedProp);
+                    }
+                }
+            }
             if (map != lastMap)
             {
                 // If the screen was faded out, fade it back in.
@@ -310,7 +385,9 @@ namespace Sumo
 
             // Clear the leftover vehicles, vehicle parts, world damage etc from last round.
             var p = Game.PlayerPed.Position;
-            ClearArea(p.X, p.Y, p.Z, 500f, true, false, false, false);
+            //ClearArea(p.X, p.Y, p.Z, 300f, true, false, false, false);
+            //ClearAreaOfEverything(p.X, p.Y, p.Z, 300f, true, false, false, false);
+            //ClearAreaOfObjects(mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 300f, 0);
 
             Print($"Starting a new round. Death z coord = {zDeathCoord.ToString()}");
 
