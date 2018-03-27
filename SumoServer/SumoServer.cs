@@ -155,11 +155,12 @@ namespace SumoServer
                     {
                         newMap = maps[0];
                     }
-                    else if (maps.Count >= index + 1)
+                    else if (maps.Count > index + 1)
                     {
                         newMap = maps[index + 1];
                     }
                 }
+                //string newMap = "sumo-rooftop-1";
 
                 Debug.WriteLine("new map: " + newMap);
 
@@ -214,7 +215,14 @@ namespace SumoServer
                     {
                         await Delay(1000);
                         var map = Exports["mapmanager"].getCurrentMap();
-                        TriggerClientEvent("Sumo:StartGame", map);
+                        string suddenDeathCenter = GetResourceMetadata(map, "sudden_death_coords_data_extra", 0) ?? "{\"x\":0.0,\"z\":0.0,\"y\":0.0";
+
+                        suddenDeathCenter = suddenDeathCenter.Replace('}', ',');
+                        float x = float.Parse(suddenDeathCenter.Split('x')[1].Split(':')[1].Split(',')[0]);
+                        float y = float.Parse(suddenDeathCenter.Split('y')[1].Split(':')[1].Split(',')[0]);
+                        float z = float.Parse(suddenDeathCenter.Split('z')[1].Split(':')[1].Split(',')[0]);
+                        Debug.Write($"x:{x}\r\ny:{y}\r\nz:{z}\r\n");
+                        TriggerClientEvent("Sumo:StartGame", map, x, y, z);
                         round++;
                         await Delay(4500);
                         gameStarted = true;

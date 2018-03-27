@@ -30,11 +30,16 @@ namespace Sumo
                 var g = 0;
                 var b = 0;
                 var a = 0;
-                GetHudColour(28 - 6 + 24 + p.Handle, ref r, ref g, ref b, ref a);
-                var wins = (5 * (p.Handle + 1) / NetworkGetNumConnectedPlayers() + 1);
-                var loses = 5 * (p.Handle + 4);
+                GetHudColour(28 + p.Handle, ref r, ref g, ref b, ref a);
+                //GetHudColour(28 - 6 + 24 + p.Handle, ref r, ref g, ref b, ref a);
+                //int wins = (5 * (p.Handle + 1) / NetworkGetNumConnectedPlayers() + 1);
+                //int loses = 5 * (p.Handle + 4);
+                //float wlratio = (float)Math.Round((double)wins / ((double)loses + 0.0001), 2);
+                int wins = 0;
+                int loses = 0;
+                float wlratio = 0f;
 
-                DrawRow(players, p.Name, wins, loses, (float)Math.Round((double)wins / (double)loses, 2) + 0.00f, r, g, b);
+                DrawRow(players, p.Name, wins, loses, wlratio, r, g, b);
                 players++;
             }
         }

@@ -27,10 +27,12 @@ namespace Sumo
         public static int Round { get; private set; } = 1;
         public enum GamePhase { WAITING, STARTING, STARTED, DEAD, RESTARTING, CHOOSING_VEHICLE };
         public static GamePhase _CurrentGamePhase = GamePhase.WAITING;
+        private bool suddenDeath = false;
         private Vehicle currentVehicle = null;
         private string nextVehicle = "zentorno";
         private string lastMap = "";
         private List<SumoProp> props = new List<SumoProp>();
+        private Vector3 mapCenterCoords = new Vector3(0f, 0f, 0f);
         private int matchTimer = 0; // used to end the game if the time is up.
 
         private int CountDownTimer = 3;
@@ -67,6 +69,7 @@ namespace Sumo
         #endregion
 
 
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -84,14 +87,15 @@ namespace Sumo
             // On first resource start only.
             if (!FirstSetupDone)
             {
-                GetHudColour(28 + 24 - 6 + PlayerId(), ref playerR, ref playerG, ref playerB, ref playerA);
+                GetHudColour(28 + PlayerId(), ref playerR, ref playerG, ref playerB, ref playerA);
+                //GetHudColour(28 + 24 - 6 + PlayerId(), ref playerR, ref playerG, ref playerB, ref playerA);
 
                 FirstSetupDone = true;
                 Exports["spawnmanager"].setAutoSpawn(false);
 
                 EventHandlers.Add("Sumo:FinishGame", new Action<int, int>(EndRound));
                 EventHandlers.Add("Sumo:RunSetup", new Action<int, bool>(RunSetup));
-                EventHandlers.Add("Sumo:StartGame", new Action<string>(StartGame));
+                EventHandlers.Add("Sumo:StartGame", new Action<string, float, float, float>(StartGame));
                 EventHandlers.Add("Sumo:SetNextVehicle", new Action<string>(SetVehicle));
                 EventHandlers.Add("Sumo:Whistle", new Action<string>(Whistle));
                 EventHandlers.Add("Sumo:InProgress", new Action(AlreadyInProgress));
@@ -105,6 +109,7 @@ namespace Sumo
                 RequestScriptAudioBank("DLC_LOW2/SUMO_01", false);
 
                 Tick += OnTick;
+                Tick += SuddenDeath;
             }
             else
             {
@@ -112,6 +117,92 @@ namespace Sumo
                 Print("Initial resource setup is already completed, no need to run it again: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
                 RunSetup(firstJoin: false);
                 return;
+            }
+        }
+
+        private async Task SuddenDeath()
+        {
+            var safeTimer = GetGameTimer();
+            var timer = GetGameTimer();
+            var radius = 30f;
+            if (suddenDeath)
+            {
+                ShowMpMessageLarge("Sudden Death", "", MessageType.INFO, 3000);
+            }
+            while (suddenDeath && mapCenterCoords != null && !mapCenterCoords.IsZero)
+            {
+                await Delay(0);
+
+                //var sec = 0;
+                while (GetGameTimer() - safeTimer < 10000)
+                {
+                    await Delay(0);
+                    //sec++;
+                    var t = GetGameTimer() - safeTimer;
+                    if (t > 0 && t < 1000)
+                    {
+                        timeleft = "~r~00:10";
+                    }
+                    else if (t > 999 && t < 2000)
+                    {
+                        timeleft = "~r~00:09";
+                    }
+                    else if (t > 1999 && t < 3000)
+                    {
+                        timeleft = "~r~00:08";
+                    }
+                    else if (t > 2999 && t < 4000)
+                    {
+                        timeleft = "~r~00:07";
+                    }
+                    else if (t > 3999 && t < 5000)
+                    {
+                        timeleft = "~r~00:06";
+                    }
+                    else if (t > 4999 && t < 6000)
+                    {
+                        timeleft = "~r~00:05";
+                    }
+                    else if (t > 5999 && t < 7000)
+                    {
+                        timeleft = "~r~00:04";
+                    }
+                    else if (t > 6999 && t < 8000)
+                    {
+                        timeleft = "~r~00:03";
+                    }
+                    else if (t > 7999 && t < 9000)
+                    {
+                        timeleft = "~r~00:02";
+                    }
+                    else if (t > 8999 && t < 10000)
+                    {
+                        timeleft = "~r~00:01";
+                    }
+                    else if (t > 9999)
+                    {
+                        timeleft = "00:00";
+                    }
+
+                    DrawMarker(28, mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, radius, radius, radius, 230, 240, 30, 75, false, false, 0, false, null, null, false);
+                    ShowHelp("You have 10 seconds to get into the area at which point anybody outside of the area will be", false, false);
+                }
+
+                DrawMarker(28, mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, radius, radius, radius, 230, 240, 30, 75, false, false, 0, false, null, null, false);
+                if (GetGameTimer() - timer >= 50)
+                {
+                    timer = GetGameTimer();
+                    radius -= 0.02f;
+                }
+                if (_CurrentGamePhase == GamePhase.STARTED && Game.PlayerPed.IsInVehicle() && !GetVehicle().IsDead)
+                {
+                    var pos = currentVehicle.Position;
+                    if (Vdist(pos.X, pos.Y, pos.Z, mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z) > radius)
+                    {
+                        NetworkExplodeVehicle(currentVehicle.Handle, true, false, false);
+                        TriggerServerEvent("Sumo:RemovePlayer");
+                    }
+                }
             }
         }
 
@@ -140,7 +231,6 @@ namespace Sumo
             Print("RESPAWNING BECAUSE THE GAME IS ALREADY IN PROGRESS.");
             await RespawnPlayer(false);
             _CurrentGamePhase = GamePhase.DEAD;
-
         }
 
         /// <summary>
@@ -151,6 +241,7 @@ namespace Sumo
         /// <param name="firstJoin"></param>
         private async void RunSetup(int newTime = 12, bool firstJoin = false)
         {
+            suddenDeath = false;
             DoScreenFadeOut(500);
             Vector3 playerPos = Game.PlayerPed.Position;
             ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300, true, false, false, false);
@@ -190,7 +281,7 @@ namespace Sumo
         /// Starts a new game/round. The provided map name will be used to check some map specific data.
         /// </summary>
         /// <param name="map">Map name for the next round.</param>
-        private async void StartGame(string map)
+        private async void StartGame(string map, float x, float y, float z)
         {
             mapCenterCoords = new Vector3(x, y, z);
             props = new List<SumoProp>();
@@ -314,7 +405,43 @@ namespace Sumo
             // If the map type is set to "offroad", then set the default vehicle to monster.
             if (GetResourceMetadata(map, "vehicleType", 0) == "offroad")
             {
-                nextVehicle = "MONSTER";
+                var r = new Random().Next(0, 9);
+                if (r == 0)
+                {
+                    nextVehicle = "BIFTA";
+                }
+                else if (r == 1)
+                {
+                    nextVehicle = "BRAWLER";
+                }
+                else if (r == 2)
+                {
+                    nextVehicle = "DUBSTA3";
+                }
+                else if (r == 3)
+                {
+                    nextVehicle = "DUNE";
+                }
+                else if (r == 4)
+                {
+                    nextVehicle = "MARSHALL";
+                }
+                else if (r == 5)
+                {
+                    nextVehicle = "MONSTER";
+                }
+                else if (r == 6)
+                {
+                    nextVehicle = "MESA3";
+                }
+                else if (r == 7)
+                {
+                    nextVehicle = "TROPHYTRUCK";
+                }
+                else if (r == 8)
+                {
+                    nextVehicle = "SANDKING";
+                }
             }
             else // Otherwise, set it to a random car.
             {
@@ -333,11 +460,11 @@ namespace Sumo
                 }
                 else if (r == 3)
                 {
-                    nextVehicle = "DOMINATOR3";
+                    nextVehicle = "T20";
                 }
                 else if (r == 4)
                 {
-                    nextVehicle = "CADDY";
+                    nextVehicle = "VACCA";
                 }
                 else if (r == 5)
                 {
@@ -395,6 +522,7 @@ namespace Sumo
             _CurrentGamePhase = GamePhase.STARTING;
 
             // Create the new camera for the intro.
+            DestroyCam(camera, true);
             camera = CreateCam("TIMED_SPLINE_CAMERA", true);
             // Show the camera + animation.
             ManageCamera();
@@ -451,21 +579,21 @@ namespace Sumo
             if (winner == -2)
             {
                 ShowMpMessageLarge("TIME'S UP!", "LOSER!", MessageType.WASTED, 2500);
-                /// TODO:
-                /// REFACTOR THIS TO CREATE SOMETHING THAT SHRINKS THE PLAY AREA SO THAT PLAYERS ARE FORCED TO KNOCK EACH OTHER OUT AND END THIS ROUND.
             }
             else // Show who won.
             {
                 await Delay(3500);
                 if (PlayerId() == GetPlayerFromServerId(winner))
                 {
-                    var color = 28 - 6 + 24 + PlayerId();
+                    var color = 28 + PlayerId();
+                    //var color = 28 - 6 + 24 + PlayerId();
                     ShowMpMessageLarge("WINNER", "", color, 2500);
                     PlaySoundFrontend(-1, "Mission_Pass_Notify", "DLC_HEISTS_GENERAL_FRONTEND_SOUNDS", false);
                 }
                 else
                 {
-                    var color = $"~HUD_COLOUR_NET_PLAYER{(24 - 5 + (GetPlayerFromServerId(winner) != -1 ? GetPlayerFromServerId(winner) : 0))}~";
+                    var color = $"~HUD_COLOUR_NET_PLAYER{(1 + (GetPlayerFromServerId(winner) != -1 ? GetPlayerFromServerId(winner) : 0))}~";
+                    //var color = $"~HUD_COLOUR_NET_PLAYER{(24 - 5 + (GetPlayerFromServerId(winner) != -1 ? GetPlayerFromServerId(winner) : 0))}~";
                     ShowMpMessageLarge("LOSER", $" (Winner: {color}{GetPlayerName(GetPlayerFromServerId(winner))}~HUD_COLOUR_WHITE~)", MessageType.WASTED, 2500);
                     PlaySoundFrontend(-1, "LOSER", "HUD_AWARDS", false);
                 }
@@ -592,6 +720,27 @@ namespace Sumo
         /// <returns></returns>
         private async Task OnTick()
         {
+
+
+            if (!IsPedInAnyVehicle(PlayerPedId(), false))
+            {
+                Game.DisableControlThisFrame(0, Control.Attack);
+                Game.DisableControlThisFrame(0, Control.Attack2);
+                Game.DisableControlThisFrame(0, Control.MeleeAttack1);
+                Game.DisableControlThisFrame(0, Control.MeleeAttack2);
+                Game.DisableControlThisFrame(0, Control.MeleeAttackAlternate);
+                Game.DisableControlThisFrame(0, Control.MeleeAttackHeavy);
+                Game.DisableControlThisFrame(0, Control.MeleeAttackLight);
+                Game.DisableControlThisFrame(0, Control.Aim);
+                Game.DisableControlThisFrame(0, Control.AccurateAim);
+                Game.DisableControlThisFrame(0, Control.VehicleAim);
+                Game.DisableControlThisFrame(0, Control.VehicleCinCam);
+                Game.DisableControlThisFrame(0, Control.VehiclePassengerAim);
+                Game.DisableControlThisFrame(0, Control.VehiclePassengerAttack);
+                ClearPedTasksImmediately(PlayerPedId());
+                FreezeEntityPosition(PlayerPedId(), true);
+            }
+
             #region world/game setup
             if (GetPlayerWantedLevel(PlayerId()) > 0)
             {
@@ -626,6 +775,38 @@ namespace Sumo
             }
             SetEntityVisible(PlayerPedId(), IsPedInAnyVehicle(PlayerPedId(), false), false);
             #endregion
+
+            if (_CurrentGamePhase == GamePhase.STARTED || _CurrentGamePhase == GamePhase.DEAD)
+            {
+                if (matchTimer == 0)
+                {
+                    matchTimer = GetGameTimer();
+                }
+                if (GetGameTimer() - matchTimer >= 1000)
+                {
+                    if (!(times == 0 && timem == 0))
+                    {
+                        times--;
+                        if (times < 0)
+                        {
+                            times = 59;
+                            timem--;
+                        }
+                        if (times == 5 && timem == 0)
+                        {
+                            PlaySoundFrontend(0, "5s_To_Event_Start_Countdown", "GTAO_FM_Events_Soundset", false);
+                        }
+                    }
+                    else
+                    {
+                        //TriggerServerEvent("Sumo:EndGameTimer");
+                        suddenDeath = true;
+                    }
+                    matchTimer = GetGameTimer();
+                }
+
+                timeleft = ((timem == 0 && times <= 10) ? "~r~" : "") + "0" + timem.ToString() + ":" + ((times < 10) ? ("0" + times.ToString()) : times.ToString());
+            }
 
             #region WAITING GAME PHASE
             if (_CurrentGamePhase == GamePhase.WAITING)
@@ -666,33 +847,7 @@ namespace Sumo
             {
                 ShowStats();
 
-                if (matchTimer == 0)
-                {
-                    matchTimer = GetGameTimer();
-                }
-                if (GetGameTimer() - matchTimer >= 1000)
-                {
-                    if (!(times == 0 && timem == 0))
-                    {
-                        times--;
-                        if (times < 0)
-                        {
-                            times = 59;
-                            timem--;
-                        }
-                        if (times == 5 && timem == 0)
-                        {
-                            PlaySoundFrontend(0, "5s_To_Event_Start_Countdown", "GTAO_FM_Events_Soundset", false);
-                        }
-                    }
-                    else
-                    {
-                        TriggerServerEvent("Sumo:EndGameTimer");
-                    }
-                    matchTimer = GetGameTimer();
-                }
 
-                timeleft = ((timem == 0 && times <= 10) ? "~r~" : "") + "0" + timem.ToString() + ":" + ((times < 10) ? ("0" + times.ToString()) : times.ToString());
 
 
                 Subtitle("~z~Force the other players out ~s~of the area.");
@@ -718,7 +873,7 @@ namespace Sumo
                         {
                             TriggerServerEvent("Sumo:RemovePlayer");
                             _CurrentGamePhase = GamePhase.DEAD;
-                            PlaySoundFrontend(-1, "GO", "HUD_MINI_GAME_SOUNDSET", false);
+                            //PlaySoundFrontend(-1, "GO", "HUD_MINI_GAME_SOUNDSET", false);
                             ShowMpMessageLarge("KNOCKED OUT", "", MessageType.WASTED, 3000);
                             await Delay(3000);
                             if (_CurrentGamePhase == GamePhase.DEAD)
@@ -874,7 +1029,8 @@ namespace Sumo
                         SetBlipAsShortRange(existingBlip, true);
                         SetBlipHighDetail(existingBlip, true);
                         ShowHeadingIndicatorOnBlip(existingBlip, true);
-                        SetBlipColour(existingBlip, p.Handle + 24);
+                        //SetBlipColour(existingBlip, p.Handle + 24);
+                        SetBlipColour(existingBlip, p.Handle + 6);
                         SetBlipShrink(existingBlip, true);
                         SetBlipNameToPlayerName(existingBlip, p.Handle);
                     }
@@ -903,8 +1059,19 @@ namespace Sumo
         /// <param name="saveToBrief">Should the message be saved to the pause menu brief.</param>
         private void ShowHelp(string msg, bool bleep, bool saveToBrief)
         {
-            BeginTextCommandDisplayHelp("STRING");
-            AddTextComponentSubstringPlayerName(msg);
+            if (suddenDeath)
+            {
+                BeginTextCommandDisplayHelp("TWOSTRINGS");
+                AddTextComponentSubstringPlayerName(msg);
+                AddTextComponentSubstringPlayerName("eliminated immediately.");
+            }
+            else
+            {
+                BeginTextCommandDisplayHelp("STRING");
+                AddTextComponentSubstringPlayerName(msg);
+            }
+
+
             EndTextCommandDisplayHelp(0, saveToBrief, bleep, -1);
         }
 
@@ -1007,7 +1174,8 @@ namespace Sumo
             if (deadPlayerServerId != null)
             {
                 var p = new Player(GetPlayerFromServerId(int.Parse(deadPlayerServerId)));
-                string color = $"HUD_COLOUR_NET_PLAYER{(p.Handle + 1 + 24 - 6)}";
+                string color = $"HUD_COLOUR_NET_PLAYER{(p.Handle + 1)}";
+                //string color = $"HUD_COLOUR_NET_PLAYER{(p.Handle + 1 + 24 - 6)}";
 
                 CitizenFX.Core.UI.Screen.ShowNotification($"~{color}~<C>{GetPlayerName(p.Handle)}</C> ~s~was knocked out.");
             }
@@ -1168,7 +1336,7 @@ namespace Sumo
 
             DrawSprite("social_club2_g0", "social_club2", x, y2, width, height, 0.0f, 0, 0, 0, 180);
             DrawText("PLAYERS", x - ((width - 0.01f) / 2f), y2 - ((height - 0.01f) / 2f), false);
-            DrawText($"{NetworkGetNumConnectedPlayers()}/8", x + ((width - 0.01f) / 2f), y2 - ((height - 0.01f) / 2f), true);
+            DrawText($"{NetworkGetNumConnectedPlayers()}/32", x + ((width - 0.01f) / 2f), y2 - ((height - 0.01f) / 2f), true);
 
             DrawSprite("social_club2_g0", "social_club2", x, y3, width, height, 0.0f, 0, 0, 0, 180);
             DrawText("ROUND", x - ((width - 0.01f) / 2f), y3 - ((height - 0.01f) / 2f), false);
