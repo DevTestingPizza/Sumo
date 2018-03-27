@@ -398,17 +398,17 @@ namespace Sumo
             await Delay(3500);
 
             // Restart the game if the map is going to be switched. This prevents duplicate re-spawns.
-            if ((Round - 1) % 5 == 0)
-            {
-                _CurrentGamePhase = GamePhase.RESTARTING;
-                TriggerServerEvent("Sumo:MarkReady");
-            }
-            else
-            {
-                // Otherwise just run the setup for the next round.
-                Print("End of previous round: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
-                RunSetup(newTime);
-            }
+            //if ((Round + 1) % 5 == 0)
+            //{
+            //    _CurrentGamePhase = GamePhase.RESTARTING;
+            //    TriggerServerEvent("Sumo:MarkReady");
+            //}
+            //else
+            //{
+            // Otherwise just run the setup for the next round.
+            Print("End of previous round: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
+            RunSetup(newTime);
+            //}
 
             // Increase the current round number.
             Round++;
