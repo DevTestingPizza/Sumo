@@ -295,10 +295,10 @@ namespace Sumo
                 }
             }
             // Do the same if you're in the air, you're below the death z coord or your car is dead/exploded.
-            else if (Game.PlayerPed.Position.Z - 5f < zDeathCoord || currentVehicle.IsInAir || Game.PlayerPed.IsDead)
+            else if (Game.PlayerPed.Position.Z < zDeathCoord || currentVehicle.IsInAir || Game.PlayerPed.IsDead)
             {
                 Print("RESPAWN CAUSED BY THE PLAYER BEING BELOW THE MAP, THE VEHICLE BEING IN THE AIR, OR THE PED BEING DEAD.");
-                Print($"CAUSE BY POSITION: {(Game.PlayerPed.Position.Z - 5f < zDeathCoord ? "yes" : "no")}.");
+                Print($"CAUSE BY POSITION: {(Game.PlayerPed.Position.Z < zDeathCoord ? "yes" : "no")}.");
                 Print($"CAUSE BY IN-AIR: {(currentVehicle.IsInAir ? "yes" : "no")}.");
                 Print($"CAUSE BY VEHICLE IS DEAD: {(Game.PlayerPed.IsDead ? "yes" : "no")}.");
                 await RespawnPlayer(true);
