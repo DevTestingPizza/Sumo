@@ -15,9 +15,10 @@ namespace Sumo
         public struct SumoProp
         {
             public uint Hash;
-            public Vector3 position;
+            public Vector3 Position;
             public float heading;
-            public Vector3 vRotation;
+            public Vector3 Rotation;
+            public int Texture;
         }
 
         #region variables
@@ -244,8 +245,7 @@ namespace Sumo
             suddenDeath = false;
             DoScreenFadeOut(500);
             Vector3 playerPos = Game.PlayerPed.Position;
-            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300, true, false, false, false);
-            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300f, true, false, false, false);
+            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 100f, true, false, false, false);
 
             Print("RunSetup function called.");
             timem = 3;
@@ -289,14 +289,6 @@ namespace Sumo
             if (file != null)
             {
                 Newtonsoft.Json.Linq.JArray jsonProps = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JArray>(file);
-                if (NetworkIsHost())
-                {
-                    Print("true");
-                }
-                else
-                {
-                    Print("false");
-                }
                 foreach (var prop in jsonProps)
                 {
                     Print("Hash: " + prop["hash"].ToString());
@@ -307,43 +299,46 @@ namespace Sumo
                     {
                         Hash = (uint)int.Parse(prop["hash"].ToString()),
                         heading = float.Parse(prop["heading"].ToString()),
-                        position = new Vector3(float.Parse(prop["x"].ToString()), float.Parse(prop["y"].ToString()), float.Parse(prop["z"].ToString())),
-                        vRotation = new Vector3(float.Parse(prop["vRot"]["x"].ToString()), float.Parse(prop["vRot"]["y"].ToString()), float.Parse(prop["vRot"]["z"].ToString())),
+                        Position = new Vector3(float.Parse(prop["x"].ToString()), float.Parse(prop["y"].ToString()), float.Parse(prop["z"].ToString())),
+                        Rotation = new Vector3(float.Parse(prop["vRot"]["x"].ToString()), float.Parse(prop["vRot"]["y"].ToString()), float.Parse(prop["vRot"]["z"].ToString())),
+                        Texture = (int.Parse(prop["texture"].ToString() ?? "0"))
                     };
-                    props.Add(tmpProp);
-                }
-            }
-
-
-            ClearArea(mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 300f, true, false, false, false);
-            foreach (SumoProp prop in props)
-            {
-                ClearArea(prop.position.X, prop.position.Y, prop.position.Z, 100f, true, false, false, false);
-                var closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
-                DeleteObject(ref closestObject);
-
-                closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
-                DeleteObject(ref closestObject);
-            }
-            await Delay(100);
-            if (NetworkIsHost())
-            {
-                if (map == "sumo-rooftop-1")
-                {
-                    foreach (SumoProp prop in props)
+                    if (!HasModelLoaded(tmpProp.Hash))
                     {
-                        RequestModel(prop.Hash);
-                        while (!HasModelLoaded(prop.Hash))
+                        RequestModel(tmpProp.Hash);
+                        while (!HasModelLoaded(tmpProp.Hash))
                         {
                             await Delay(0);
                         }
-                        Print($"Prop created at {prop.position.ToString()}");
-                        var spawnedProp = CreateObjectNoOffset(prop.Hash, prop.position.X, prop.position.Y, prop.position.Z, true, false, false);
-                        SetEntityHeading(spawnedProp, prop.heading);
-                        SetEntityAsMissionEntity(spawnedProp, false, false);
-                        //SetModelAsNoLongerNeeded(prop.Hash);
-                        //SetEntityAsNoLongerNeeded(ref spawnedProp);
                     }
+                    props.Add(tmpProp);
+
+                }
+            }
+
+            ClearArea(mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 300f, true, false, false, false);
+
+            foreach (SumoProp prop in props)
+            {
+                ClearArea(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, true, false, false, false);
+                var closestObject = GetClosestObjectOfType(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, prop.Hash, false, false, false);
+                DeleteObject(ref closestObject);
+                SetEntityAsMissionEntity(closestObject, false, false);
+                closestObject = GetClosestObjectOfType(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, prop.Hash, false, false, false);
+                DeleteObject(ref closestObject);
+            }
+            await Delay(500);
+            if (NetworkIsHost())
+            {
+                foreach (SumoProp prop in props)
+                {
+                    Print($"Prop created at {prop.Position.ToString()}");
+                    var spawnedProp = CreateObjectNoOffset(prop.Hash, prop.Position.X, prop.Position.Y, prop.Position.Z, true, false, true);
+                    SetEntityHeading(spawnedProp, prop.heading);
+                    SetEntityRotation(spawnedProp, prop.Rotation.X, prop.Rotation.Y, prop.Rotation.Z, 0, true);
+                    SetObjectTextureVariant(spawnedProp, prop.Texture);
+                    //SetModelAsNoLongerNeeded(prop.Hash);
+                    //SetEntityAsNoLongerNeeded(ref spawnedProp);
                 }
             }
             if (map != lastMap)
@@ -720,8 +715,6 @@ namespace Sumo
         /// <returns></returns>
         private async Task OnTick()
         {
-
-
             if (!IsPedInAnyVehicle(PlayerPedId(), false))
             {
                 Game.DisableControlThisFrame(0, Control.Attack);
@@ -1330,9 +1323,12 @@ namespace Sumo
             var y2 = (1080.0f - (actualHeight / 2f) - (5f + actualHeight) * 2f) / 1080.0f;
             var y3 = (1080.0f - (actualHeight / 2f) - (5f + actualHeight) * 3f) / 1080.0f;
 
-            DrawSprite("social_club2_g0", "social_club2", x, y, width, height, 0.0f, 0, 0, 0, 180);
-            DrawText("TIME", x - ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), false);
-            DrawText(timeleft, x + ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), true);
+            if (!suddenDeath)
+            {
+                DrawSprite("social_club2_g0", "social_club2", x, y, width, height, 0.0f, 0, 0, 0, 180);
+                DrawText("TIME", x - ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), false);
+                DrawText(timeleft, x + ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), true);
+            }
 
             DrawSprite("social_club2_g0", "social_club2", x, y2, width, height, 0.0f, 0, 0, 0, 180);
             DrawText("PLAYERS", x - ((width - 0.01f) / 2f), y2 - ((height - 0.01f) / 2f), false);
