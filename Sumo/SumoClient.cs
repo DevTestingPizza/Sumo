@@ -15,9 +15,10 @@ namespace Sumo
         public struct SumoProp
         {
             public uint Hash;
-            public Vector3 position;
-            public float heading;
-            public Vector3 vRotation;
+            public Vector3 Position;
+            public float Heading;
+            public Vector3 Rotation;
+            public int Texture;
         }
 
         #region variables
@@ -56,6 +57,7 @@ namespace Sumo
         private float zDeathCoord = -1f;
         private bool dieInWater = false;
         private int worldHourOfDay = 12;
+        private float radius = 30f;
 
         // Variables used to keep track of repeating events, making sure they don't get called too quickly.
         private bool dontCountAsDeath = false;
@@ -98,7 +100,9 @@ namespace Sumo
                 EventHandlers.Add("Sumo:StartGame", new Action<string, float, float, float>(StartGame));
                 EventHandlers.Add("Sumo:SetNextVehicle", new Action<string>(SetVehicle));
                 EventHandlers.Add("Sumo:Whistle", new Action<string>(Whistle));
-                EventHandlers.Add("Sumo:InProgress", new Action(AlreadyInProgress));
+                EventHandlers.Add("Sumo:InProgress", new Action<int, int, string, float, float, float>(AlreadyInProgress));
+                EventHandlers.Add("Sumo:SetSphereRadius", new Action<float>(SetSphereSize));
+                EventHandlers.Add("Sumo:UpdateTime", new Action<int, int>(UpdateGameTime));
                 Print("First map load: CALLING RunSetup FUNCTION AND THUS RESPAWNING!");
                 RunSetup(firstJoin: true);
                 await Delay(1000);
@@ -120,15 +124,27 @@ namespace Sumo
             }
         }
 
+        private void UpdateGameTime(int minute, int second)
+        {
+            timem = minute;
+            times = second;
+            //gameSecond, gameMinute
+        }
+
+        private void SetSphereSize(float size)
+        {
+            radius = size;
+        }
+
         private async Task SuddenDeath()
         {
-            var safeTimer = GetGameTimer();
             var timer = GetGameTimer();
-            var radius = 30f;
+            radius = 30f;
             if (suddenDeath)
             {
                 ShowMpMessageLarge("Sudden Death", "", MessageType.INFO, 3000);
             }
+            var safeTimer = GetGameTimer();
             while (suddenDeath && mapCenterCoords != null && !mapCenterCoords.IsZero)
             {
                 await Delay(0);
@@ -209,8 +225,23 @@ namespace Sumo
         /// <summary>
         /// This lets the client know that a game is already in progress when they joined, it will remove their car and mark them as dead.
         /// </summary>
-        private async void AlreadyInProgress()
+        private async void AlreadyInProgress(int minute, int second, string mapName, float x, float y, float z)
         {
+            mapCenterCoords = new Vector3(x, y, z);
+            lastMap = mapName;
+
+            if (timem <= 0 && times <= 0)
+            {
+                suddenDeath = true;
+                timem = 0;
+                times = 0;
+            }
+            else
+            {
+                timem = minute;
+                times = second;
+            }
+
             CitizenFX.Core.UI.Screen.ShowSubtitle("Game is already in progress, please wait for the next round!");
             if (currentVehicle != null)
             {
@@ -244,8 +275,8 @@ namespace Sumo
             suddenDeath = false;
             DoScreenFadeOut(500);
             Vector3 playerPos = Game.PlayerPed.Position;
-            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300, true, false, false, false);
-            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300f, true, false, false, false);
+            ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 100, true, false, false, false);
+            //ClearArea(playerPos.X, playerPos.Y, playerPos.Z, 300f, true, false, false, false);
 
             Print("RunSetup function called.");
             timem = 3;
@@ -289,14 +320,6 @@ namespace Sumo
             if (file != null)
             {
                 Newtonsoft.Json.Linq.JArray jsonProps = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JArray>(file);
-                if (NetworkIsHost())
-                {
-                    Print("true");
-                }
-                else
-                {
-                    Print("false");
-                }
                 foreach (var prop in jsonProps)
                 {
                     Print("Hash: " + prop["hash"].ToString());
@@ -306,41 +329,60 @@ namespace Sumo
                     var tmpProp = new SumoProp()
                     {
                         Hash = (uint)int.Parse(prop["hash"].ToString()),
-                        heading = float.Parse(prop["heading"].ToString()),
-                        position = new Vector3(float.Parse(prop["x"].ToString()), float.Parse(prop["y"].ToString()), float.Parse(prop["z"].ToString())),
-                        vRotation = new Vector3(float.Parse(prop["vRot"]["x"].ToString()), float.Parse(prop["vRot"]["y"].ToString()), float.Parse(prop["vRot"]["z"].ToString())),
+                        Heading = float.Parse(prop["heading"].ToString()),
+                        Position = new Vector3(float.Parse(prop["x"].ToString()), float.Parse(prop["y"].ToString()), float.Parse(prop["z"].ToString())),
+                        Rotation = new Vector3(float.Parse(prop["vRot"]["x"].ToString()), float.Parse(prop["vRot"]["y"].ToString()), float.Parse(prop["vRot"]["z"].ToString())),
+                        Texture = int.Parse((prop["texture"].ToString() ?? "0"))
                     };
+                    if (!HasModelLoaded(tmpProp.Hash))
+                    {
+                        RequestModel(tmpProp.Hash);
+                        while (!HasModelLoaded(tmpProp.Hash))
+                        {
+                            await Delay(0);
+                        }
+                    }
                     props.Add(tmpProp);
                 }
             }
 
-
             ClearArea(mapCenterCoords.X, mapCenterCoords.Y, mapCenterCoords.Z, 300f, true, false, false, false);
+
             foreach (SumoProp prop in props)
             {
-                ClearArea(prop.position.X, prop.position.Y, prop.position.Z, 100f, true, false, false, false);
-                var closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
+                ClearArea(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, true, false, false, false);
+                var closestObject = GetClosestObjectOfType(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, prop.Hash, false, false, false);
+                SetEntityAsMissionEntity(closestObject, false, false);
                 DeleteObject(ref closestObject);
 
-                closestObject = GetClosestObjectOfType(prop.position.X, prop.position.Y, prop.position.Z, 100f, prop.Hash, false, false, false);
+                closestObject = GetClosestObjectOfType(prop.Position.X, prop.Position.Y, prop.Position.Z, 100f, prop.Hash, false, false, false);
                 DeleteObject(ref closestObject);
             }
-            await Delay(100);
+            await Delay(500);
             if (NetworkIsHost())
             {
-                if (map == "sumo-rooftop-1")
+                //if (map == "sumo-rooftop-1")
                 {
+                    //var cindex = 0;
                     foreach (SumoProp prop in props)
                     {
+                        //cindex++;
                         RequestModel(prop.Hash);
                         while (!HasModelLoaded(prop.Hash))
                         {
                             await Delay(0);
                         }
-                        Print($"Prop created at {prop.position.ToString()}");
-                        var spawnedProp = CreateObjectNoOffset(prop.Hash, prop.position.X, prop.position.Y, prop.position.Z, true, false, false);
-                        SetEntityHeading(spawnedProp, prop.heading);
-                        SetEntityAsMissionEntity(spawnedProp, false, false);
+                        Print($"Prop created at {prop.Position.ToString()}");
+                        var spawnedProp = CreateObjectNoOffset(prop.Hash, prop.Position.X, prop.Position.Y, prop.Position.Z, true, false, true);
+                        SetEntityHeading(spawnedProp, prop.Heading);
+                        SetEntityRotation(spawnedProp, prop.Rotation.X, prop.Rotation.Y, prop.Rotation.Z, 0, true);
+                        //SetObjectTextureVariant(spawnedProp, cindex);
+                        //SetObjectTextureVariant(spawnedProp, Round);
+                        SetObjectTextureVariant(spawnedProp, prop.Texture);
+                        //SetEntityLodDist(spawnedProp, 300);
+                        //SetEntityAsMissionEntity(spawnedProp, true, true);
+                        //Prop obj = new Prop(spawnedProp);
+                        //obj.IsPersistent = true;
                         //SetModelAsNoLongerNeeded(prop.Hash);
                         //SetEntityAsNoLongerNeeded(ref spawnedProp);
                     }
@@ -558,6 +600,10 @@ namespace Sumo
 
             timem = 3; // reset game/round time
             times = 0;
+            if (NetworkIsHost())
+            {
+                TriggerServerEvent("Sumo:GameStarted");
+            }
         }
 
         /// <summary>
@@ -685,17 +731,6 @@ namespace Sumo
                 currentVehicle.IsPersistent = false;
                 currentVehicle.PreviouslyOwnedByPlayer = false;
             }
-            //if (!inVehicle)
-            //{
-            //    currentVehicle.IsVisible = false;
-            //    currentVehicle.IsPositionFrozen = true;
-            //    currentVehicle.Position = currentVehicle.Position + new Vector3(0f, 0f, 50f);
-            //    //currentVehicle.IsVisible = false;
-            //    //foreach (Player pr in new PlayerList())
-            //    //{
-            //    //    currentVehicle.SetNoCollision(new Ped(GetPlayerPed(pr.Handle)), true);
-            //    //}
-            //}
         }
         #endregion
 
@@ -720,7 +755,6 @@ namespace Sumo
         /// <returns></returns>
         private async Task OnTick()
         {
-
 
             if (!IsPedInAnyVehicle(PlayerPedId(), false))
             {
@@ -784,7 +818,7 @@ namespace Sumo
                 }
                 if (GetGameTimer() - matchTimer >= 1000)
                 {
-                    if (!(times == 0 && timem == 0))
+                    if ((times >= 0 && timem >= 0))
                     {
                         times--;
                         if (times < 0)
@@ -805,7 +839,15 @@ namespace Sumo
                     matchTimer = GetGameTimer();
                 }
 
-                timeleft = ((timem == 0 && times <= 10) ? "~r~" : "") + "0" + timem.ToString() + ":" + ((times < 10) ? ("0" + times.ToString()) : times.ToString());
+                if (timem <= 0 && times <= 0)
+                {
+                    timeleft = "~r~00:00";
+                }
+                else
+                {
+                    timeleft = ((timem == 0 && times <= 10) ? "~r~" : "") + "0" + timem.ToString() + ":" + ((times < 10) ? ("0" + times.ToString()) : times.ToString());
+                }
+
             }
 
             #region WAITING GAME PHASE
@@ -1330,9 +1372,18 @@ namespace Sumo
             var y2 = (1080.0f - (actualHeight / 2f) - (5f + actualHeight) * 2f) / 1080.0f;
             var y3 = (1080.0f - (actualHeight / 2f) - (5f + actualHeight) * 3f) / 1080.0f;
 
-            DrawSprite("social_club2_g0", "social_club2", x, y, width, height, 0.0f, 0, 0, 0, 180);
-            DrawText("TIME", x - ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), false);
-            DrawText(timeleft, x + ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), true);
+            if (!suddenDeath)
+            {
+                DrawSprite("social_club2_g0", "social_club2", x, y, width, height, 0.0f, 0, 0, 0, 180);
+                DrawText("TIME", x - ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), false);
+                DrawText(timeleft, x + ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), true);
+            }
+            if (suddenDeath)
+            {
+                DrawSprite("social_club2_g0", "social_club2", x, y, width, height, 0.0f, 0, 0, 0, 180);
+                DrawText("TIME", x - ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), false);
+                DrawText("00:00", x + ((width - 0.01f) / 2f), y - ((height - 0.01f) / 2f), true);
+            }
 
             DrawSprite("social_club2_g0", "social_club2", x, y2, width, height, 0.0f, 0, 0, 0, 180);
             DrawText("PLAYERS", x - ((width - 0.01f) / 2f), y2 - ((height - 0.01f) / 2f), false);
