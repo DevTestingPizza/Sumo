@@ -63,10 +63,6 @@ namespace Sumo
 
         // Other misc variables.
         public static bool DebugMode { get; } = true;
-
-        /// ↓ this will be refactored soon as part of the camera updates.
-        //private enum CameraState { UP, GOING_TO_START, STARTING, GAME_CAM };
-        //private CameraState camState = CameraState.GAME_CAM;
         #endregion
 
 
